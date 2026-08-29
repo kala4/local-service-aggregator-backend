@@ -1,0 +1,101 @@
+services:
+
+  # 1. PostgreSQL
+  postgres:
+    image: postgres:16-alpine
+    container_name: aggregator-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aggregator
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret_db_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d aggregator"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. MinIO (S3-хранилище)
+  minio:
+    image: minio/minio:latest
+    container_name: aggregator-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadminpassword
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 3. Инициализация публичного бакета MinIO
+  create-buckets:
+    image: minio/mc:latest
+    container_name: aggregator-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - app-network
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadminpassword;
+      /usr/bin/mc mb myminio/workplace-photos --ignore-existing;
+      /usr/bin/mc anonymous set download myminio/workplace-photos;
+      exit 0;
+      "
+
+  # 4. Spring Boot Backend
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aggregator-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/aggregator
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=secret_db_password
+      - JWT_SECRET=KzBo5txZb9hS2XVue3X1M2vU0zP5b1bzYzdVZq07JRc=
+      - S3_BUCKET=workplace-photos
+      - S3_REGION=us-east-1
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadminpassword
+      - S3_PUBLIC_URL_PREFIX=http://localhost:9000/workplace-photos/
+      - S3_PATH_STYLE_ENABLED=true
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    external: true
+
+volumes:
+  postgres_data:
+    driver: local
+  minio_data:
+    driver: local

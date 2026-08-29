@@ -21,19 +21,19 @@ import static org.mockito.Mockito.*;
  */
 class SmsOtpServiceTest {
 
-    private static final String TOPIC_ARN = "arn:aws:sns:eu-north-1:123456789012:verification-codes";
-
     @Mock
     private SnsClient sns;
 
     private SmsOtpService service;
-    private AutoCloseable mocks;      // to close MockitoAnnotations
+    private AutoCloseable mocks;
 
     @BeforeEach
     void setUp() throws Exception {
         mocks = MockitoAnnotations.openMocks(this);
-        service = new SmsOtpService(Region.EU_NORTH_1);
-        // Inject the mock SnsClient (replace the internally created one)
+        // Вызываем новый конструктор с null ключами
+        service = new SmsOtpService(Region.EU_NORTH_1, null, null);
+
+        // Внедряем mock SnsClient
         setFinalField(service, "sns", sns);
     }
 
@@ -50,7 +50,7 @@ class SmsOtpServiceTest {
     @DisplayName("newCode returns the default test code for test numbers")
     void newCode_testPhone_returnsDefault() {
         assertEquals(SmsOtpService.DEFAULT_TEST_CODE,
-                     service.newCode("+01234567890"));
+                service.newCode("+01234567890"));
     }
 
     @Test
@@ -95,9 +95,9 @@ class SmsOtpServiceTest {
                 () -> assertEquals(phone, req.phoneNumber()),
                 () -> assertEquals("Your verification code: " + code, req.message()),
                 () -> assertEquals("Transactional",
-                                   req.messageAttributes()
-                                      .get("AWS.SNS.SMS.SMSType")
-                                      .stringValue())
+                        req.messageAttributes()
+                                .get("AWS.SNS.SMS.SMSType")
+                                .stringValue())
         );
     }
 
@@ -105,7 +105,7 @@ class SmsOtpServiceTest {
     @DisplayName("send() throws InvalidPhoneNumberException for malformed numbers")
     void send_invalidPhone_throws() {
         assertThrows(InvalidPhoneNumberException.class,
-                     () -> service.send("123-not-e164", "111111"));
+                () -> service.send("123-not-e164", "111111"));
     }
 
     @Test
@@ -115,7 +115,7 @@ class SmsOtpServiceTest {
                 .thenThrow(SnsException.builder().message("boom").build());
 
         assertThrows(SmsDeliveryException.class,
-                     () -> service.send("+15550002222", "222222"));
+                () -> service.send("+15550002222", "222222"));
     }
 
     /* ------------------------------------------------------------------

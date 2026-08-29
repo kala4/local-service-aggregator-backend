@@ -10,6 +10,7 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
 
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -27,11 +28,26 @@ class S3ServiceTest {
     private S3Service service;
 
     private static final String BUCKET = "workplace-photos";
+    private static final String REGION = "eu-north-1";
+    private static final String PUBLIC_PREFIX = "https://workplace-photos.s3.eu-north-1.amazonaws.com/";
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         MockitoAnnotations.openMocks(this);
-        service = new S3Service(s3);
+
+        // Создаем сервис с тестовыми параметрами
+        service = new S3Service(
+                BUCKET,
+                REGION,
+                null,
+                null,
+                null,
+                PUBLIC_PREFIX,
+                false
+        );
+
+        // Внедряем mock S3Client через рефлексию вместо реального
+        setFinalField(service, "s3", s3);
     }
 
     /* ------------------------------------------------------------------
@@ -53,7 +69,7 @@ class S3ServiceTest {
         String url = service.upload(bytes, key, contentType);
 
         // then
-        assertEquals("https://" + BUCKET + ".s3.eu-north-1.amazonaws.com/" + key, url);
+        assertEquals(PUBLIC_PREFIX + key, url);
 
         // capture & verify request details
         ArgumentCaptor<PutObjectRequest> reqCap = ArgumentCaptor.forClass(PutObjectRequest.class);
@@ -68,7 +84,6 @@ class S3ServiceTest {
                 () -> assertEquals(contentType,   req.contentType())
         );
 
-        // (optional) basic sanity check of the body length
         assertEquals(bytes.length, bodyCap.getValue().contentLength());
     }
 
@@ -87,5 +102,11 @@ class S3ServiceTest {
 
         assertThrows(S3Exception.class,
                 () -> service.upload(bytes, key, "application/octet-stream"));
+    }
+
+    private static void setFinalField(Object target, String name, Object value) throws Exception {
+        Field f = target.getClass().getDeclaredField(name);
+        f.setAccessible(true);
+        f.set(target, value);
     }
 }

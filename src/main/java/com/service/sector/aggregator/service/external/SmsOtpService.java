@@ -3,6 +3,8 @@ import com.service.sector.aggregator.exceptions.InvalidPhoneNumberException;
 import com.service.sector.aggregator.exceptions.SmsDeliveryException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sns.SnsClient;
 import software.amazon.awssdk.services.sns.model.*;
@@ -23,11 +25,16 @@ public class SmsOtpService implements AutoCloseable {
     private static final int MAX_CODE = 1_000_000;
 
     public SmsOtpService(
-            @Value("${aws.sns.region}") Region region
+            @Value("${aws.sns.region:eu-north-1}") Region region,
+            @Value("${aws.sns.access-key:#{null}}") String accessKey,
+            @Value("${aws.sns.secret-key:#{null}}") String secretKey
     ) {
-        sns = SnsClient.builder()
-                .region(region)
-                .build();
+        var builder = SnsClient.builder().region(region);
+        if (accessKey != null && secretKey != null && !accessKey.isBlank()) {
+            builder.credentialsProvider(StaticCredentialsProvider.create(
+                    AwsBasicCredentials.create(accessKey, secretKey)));
+        }
+        this.sns = builder.build();
     }
 
     /** Returns a zero-padded six–digit string, e.g. "034921". */

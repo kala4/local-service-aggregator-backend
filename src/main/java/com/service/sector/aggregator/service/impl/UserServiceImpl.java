@@ -121,10 +121,16 @@ public class UserServiceImpl implements UserService {
             code = smsOtpService.newCode(phone);
             smsOtpService.send(phone, code);
         } else {
-            code = DEFAULT_TEST_CODE;
+            code = DEFAULT_TEST_CODE; // "123456"
         }
         authCodeRepository.deleteAllByPhone(phone);
-        authCodeRepository.save(AuthCode.builder().phone(phone).code(code).build());
+
+        // Обязательно устанавливаем validUntil!
+        authCodeRepository.save(AuthCode.builder()
+                .phone(phone)
+                .code(code)
+                .validUntil(OffsetDateTime.now().plusMinutes(10))
+                .build());
     }
 
     @Override
